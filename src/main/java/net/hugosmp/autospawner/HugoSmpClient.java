@@ -6,6 +6,7 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.hugosmp.autospawner.automation.GuardService;
 import net.hugosmp.autospawner.automation.SpawnerRoutine;
@@ -34,6 +35,9 @@ public class HugoSmpClient implements ClientModInitializer {
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             SpawnerRoutine.reset();
             GuardService.reset();
+        });
+        ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
+            if (!overlay) SpawnerRoutine.onMessage(message.getString());
         });
         ClientTickEvents.END_CLIENT_TICK.register(HugoSmpClient::onTick);
         ClientCommandRegistrationCallback.EVENT.register(HugoSmpClient::registerCommands);
