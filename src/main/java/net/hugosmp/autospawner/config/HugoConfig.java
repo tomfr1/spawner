@@ -68,7 +68,12 @@ public class HugoConfig {
     /** Hotbar-Slot (0-8) der Silk-Touch-Spitzhacke, -1 = automatisch suchen. */
     public int silkPickaxeHotbarSlot = -1;
     public int emergencyMineTimeoutSec = 25;
-    public int postSpawnWaitTicks = 40;
+    /** Sneak-Fenster des Servers (Sekunden): Sneak wird kurz vor Ablauf erneuert. */
+    public int sneakWindowSec = 10;
+    /** Wartezeit (Ticks) nach der Ankunft am Spawn, bevor ausgeloggt wird. */
+    public int postSpawnWaitTicks = 20;
+    /** Nach so vielen Ticks ohne Teleport wird /spawn erneut gesendet (max. 3 Versuche). */
+    public int spawnRetryTicks = 100;
 
     // ---------------------------------------------------------------- Technik / GUI-Layout
     public int commandCooldownMs = 1500;
@@ -190,6 +195,8 @@ public class HugoConfig {
         orderMaxPages = (int) clamp(orderMaxPages, 1, 20);
         emergencyMineTimeoutSec = (int) clamp(emergencyMineTimeoutSec, 3, 120);
         postSpawnWaitTicks = (int) clamp(postSpawnWaitTicks, 0, 400);
+        sneakWindowSec = (int) clamp(sneakWindowSec, 3, 60);
+        spawnRetryTicks = (int) clamp(spawnRetryTicks, 40, 600);
         if (silkPickaxeHotbarSlot < -1 || silkPickaxeHotbarSlot > 8) silkPickaxeHotbarSlot = -1;
 
         // Erster Start: Intervall beginnt jetzt, kein sofortiger Lauf.
@@ -222,4 +229,3 @@ public class HugoConfig {
         return Math.max(lo, Math.min(hi, v));
     }
 }
-
