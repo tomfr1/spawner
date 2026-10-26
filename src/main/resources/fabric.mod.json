@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "hugosmp_autospawner",
+  "version": "${version}",
+  "name": "HugoSMP AutoSpawner",
+  "description": "Client-Mod fuer hugosmp.net: Spawner-Auto-System (/sell bzw. /order), Konfigurations-GUI und Trusted-Spieler-Schutz.",
+  "authors": ["HugoSMP"],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["net.hugosmp.autospawner.HugoSmpClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.17.0",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
