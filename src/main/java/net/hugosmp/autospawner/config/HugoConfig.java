@@ -83,8 +83,13 @@ public class HugoConfig {
     public int spawnerMenuSellButtonSlot = -1;
     /** Slot eines Bestaetigen-Buttons im /sell-Menue, -1 = nur Menue schliessen. */
     public int sellConfirmSlot = -1;
-    /** Slot eines Bestaetigen-Buttons im Order-Abgabe-Menue, -1 = nur Menue schliessen. */
-    public int orderConfirmSlot = -1;
+    /** Order-Abgabe-Menue: Buttons werden zuerst am Namen erkannt, die Slots sind nur der Ersatz (-1 = aus). */
+    public String orderDeliverAllText = "Ganzes Inventar liefern";
+    public String orderConfirmText = "Best\u00e4tigen";
+    public int orderDeliverAllButtonSlot = 6;
+    public int orderConfirmButtonSlot = 8;
+    /** Chat-Meldung des Servers, bei der das Entnehmen aus dem Spawner stoppt. */
+    public String inventoryFullText = "Kein Platz im Inventar";
     /** Slot des "Naechste Seite"-Buttons in der Order-Liste, -1 = keine Seiten. */
     public int orderNextPageSlot = -1;
     public int orderMaxPages = 3;
@@ -141,6 +146,9 @@ public class HugoConfig {
         if (orderMode == null) orderMode = OrderTarget.HIGHEST;
         if (orderPlayer == null) orderPlayer = "";
         if (specificOrderText == null) specificOrderText = "";
+        if (orderDeliverAllText == null || orderDeliverAllText.isBlank()) orderDeliverAllText = "Ganzes Inventar liefern";
+        if (orderConfirmText == null || orderConfirmText.isBlank()) orderConfirmText = "Best\u00e4tigen";
+        if (inventoryFullText == null || inventoryFullText.isBlank()) inventoryFullText = "Kein Platz im Inventar";
         if (!orderPlayer.isEmpty() && !PLAYER_NAME.matcher(orderPlayer).matches()) {
             HugoSmpClient.LOGGER.warn("Ungueltiger orderPlayer '{}' entfernt.", orderPlayer);
             orderPlayer = "";
@@ -214,3 +222,4 @@ public class HugoConfig {
         return Math.max(lo, Math.min(hi, v));
     }
 }
+
