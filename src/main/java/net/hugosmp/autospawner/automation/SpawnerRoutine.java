@@ -49,7 +49,9 @@ public final class SpawnerRoutine {
 
     private static S state = S.IDLE;
     private static int stateTicks, cooldown, page, spIdx, lastSyncId;
-    private static boolean confirmClicked, sellButtonClicked;
+    private static boolean confirmClicked, sellButtonClicked, deliverClicked;
+    private static volatile boolean inventoryFull;
+    private static int withdrawClicks;
     private static List<BlockPos> spawners = new ArrayList<>();
     private static final Map<Integer, Integer> attempts = new HashMap<>();
     private static final ArrayDeque<ItemRule> orderQueue = new ArrayDeque<>();
@@ -57,7 +59,15 @@ public final class SpawnerRoutine {
 
     public static boolean isRunning() { return state != S.IDLE; }
 
+    /** Wird fuer jede Server-Nachricht aufgerufen (siehe HugoSmpClient). */
+    public static void onMessage(String text) {
+        if (state == S.IDLE || text == null) return;
+        String needle = HugoConfig.get().inventoryFullText.toLowerCase(Locale.ROOT);
+        if (text.toLowerCase(Locale.ROOT).contains(needle)) inventoryFull = true;
+    }
+
     public static void reset() {
+        inventoryFull = false;
         state = S.IDLE;
         spawners = new ArrayList<>();
         attempts.clear();
@@ -85,6 +95,7 @@ public final class SpawnerRoutine {
             return false;
         }
         spIdx = 0;
+        inventoryFull = false;
         orderQueue.clear();
         Helper.msg("Starte Spawner-Lauf (" + reason + "): " + spawners.size() + " Spawner.");
         setState(S.NEXT_SPAWNER);
@@ -142,7 +153,7 @@ public final class SpawnerRoutine {
             }
             case WAIT_SPAWNER_GUI -> {
                 if (guiOpen(p)) {
-                    page = 0; attempts.clear(); sellButtonClicked = false;
+                    page = 0; attempts.clear(); sellButtonClicked = false; withdrawClicks = 0;
                     cooldown = c.clickDelayTicks + 3;
                     setState(S.WITHDRAW);
                 } else if (stateTicks > c.screenTimeoutTicks) {
@@ -213,7 +224,7 @@ public final class SpawnerRoutine {
             case WAIT_DEPOSIT_GUI -> {
                 if (guiOpen(p) && p.currentScreenHandler.syncId != lastSyncId) {
                     lastSyncId = p.currentScreenHandler.syncId;
-                    attempts.clear(); confirmClicked = false;
+                    attempts.clear(); confirmClicked = false; deliverClicked = false;
                     cooldown = c.clickDelayTicks + 4;
                     setState(S.ORDER_DEPOSIT);
                 } else if (stateTicks > c.screenTimeoutTicks) {
@@ -225,21 +236,46 @@ public final class SpawnerRoutine {
             }
             case ORDER_DEPOSIT -> {
                 if (!guiOpen(p)) { nextOrderOrFinish(); return; }
-                Item target = Registries.ITEM.get(Identifier.of(currentOrder.item));
-                int slot = findInvSlot(p.currentScreenHandler, Set.of(currentOrder.item));
-                if (slot >= 0 && Helper.count(p, target) > 0) {
-                    attempts.merge(slot, 1, Integer::sum);
-                    click(mc, p, slot, SlotActionType.QUICK_MOVE);
-                    cooldown = c.clickDelayTicks;
+                ScreenHandler h = p.currentScreenHandler;
+                // Schritt 1: "Ganzes Inventar liefern"
+                if (!deliverClicked) {
+                    int slot = findMenuSlotByName(h, c.orderDeliverAllText);
+                    if (slot < 0) slot = c.orderDeliverAllButtonSlot;
+                    if (slot < 0 || slot >= h.slots.size()) {
+                        Helper.msg("Button 'Ganzes Inventar liefern' nicht gefunden.");
+                        p.closeHandledScreen();
+                        cooldown = 10;
+                        nextOrderOrFinish();
+                        return;
+                    }
+                    click(mc, p, slot, SlotActionType.PICKUP);
+                    deliverClicked = true;
+                    stateTicks = 0;
+                    cooldown = 15; // Server Zeit zum Aktualisieren geben
                     return;
                 }
-                if (c.orderConfirmSlot >= 0 && !confirmClicked) {
-                    confirmClicked = true;
-                    click(mc, p, c.orderConfirmSlot, SlotActionType.PICKUP);
-                    cooldown = 10;
+                // Schritt 2: "Bestaetigen" (erscheint erst nach Schritt 1)
+                if (!confirmClicked) {
+                    int slot = findMenuSlotByName(h, c.orderConfirmText);
+                    if (slot < 0 && stateTicks > 40 && c.orderConfirmButtonSlot >= 0
+                            && c.orderConfirmButtonSlot < h.slots.size()) {
+                        slot = c.orderConfirmButtonSlot;
+                    }
+                    if (slot >= 0) {
+                        click(mc, p, slot, SlotActionType.PICKUP);
+                        confirmClicked = true;
+                        cooldown = 15;
+                        return;
+                    }
+                    if (stateTicks > c.screenTimeoutTicks) {
+                        Helper.msg("Bestaetigen-Button nicht gefunden (evtl. nichts zu liefern).");
+                        p.closeHandledScreen();
+                        cooldown = 10;
+                        nextOrderOrFinish();
+                    }
                     return;
                 }
-                p.closeHandledScreen();
+                if (guiOpen(p)) p.closeHandledScreen();
                 cooldown = 10;
                 nextOrderOrFinish();
             }
@@ -256,6 +292,23 @@ public final class SpawnerRoutine {
     // ------------------------------------------------------------------ Spawner-Menue
     private static void withdraw(MinecraftClient mc, ClientPlayerEntity p, HugoConfig c) {
         if (!guiOpen(p)) { spIdx++; setState(S.NEXT_SPAWNER); return; }
+        if (inventoryFull || !hasFreeSlot(p)) {
+            inventoryFull = true;
+            Helper.msg("Inventar voll - entnehme nichts mehr, verarbeite jetzt das Inventar.");
+            p.closeHandledScreen();
+            spIdx = spawners.size(); // restliche Spawner ueberspringen
+            cooldown = 10;
+            setState(S.NEXT_SPAWNER);
+            return;
+        }
+        if (withdrawClicks > 400) {
+            Helper.msg("Zu viele Klicks bei diesem Spawner - weiter zum naechsten.");
+            p.closeHandledScreen();
+            spIdx++;
+            cooldown = 10;
+            setState(S.NEXT_SPAWNER);
+            return;
+        }
         ScreenHandler h = p.currentScreenHandler;
         boolean viaButton = c.spawnerMenuSellButtonSlot >= 0;
         // Mit Sell-Button im Menue: nur Order-Items entnehmen, den Rest verkauft der Button.
@@ -268,6 +321,7 @@ public final class SpawnerRoutine {
             if (st.isEmpty() || !wanted.contains(Helper.idOf(st))) continue;
             if (attempts.merge(i, 1, Integer::sum) > 3) continue;
             click(mc, p, i, SlotActionType.QUICK_MOVE);
+            withdrawClicks++;
             cooldown = c.clickDelayTicks;
             return;
         }
@@ -361,6 +415,24 @@ public final class SpawnerRoutine {
     }
 
     // ------------------------------------------------------------------ Hilfsfunktion
+    private static boolean hasFreeSlot(ClientPlayerEntity p) {
+        PlayerInventory inv = p.getInventory();
+        for (int i = 0; i < Math.min(36, inv.size()); i++) if (inv.getStack(i).isEmpty()) return true;
+        return false;
+    }
+
+    private static int findMenuSlotByName(ScreenHandler h, String needle) {
+        String n = needle.toLowerCase(Locale.ROOT);
+        for (int i = 0; i < h.slots.size(); i++) {
+            Slot s = h.slots.get(i);
+            if (s.inventory instanceof PlayerInventory) continue;
+            ItemStack st = s.getStack();
+            if (st.isEmpty()) continue;
+            if (st.getName().getString().toLowerCase(Locale.ROOT).contains(n)) return i;
+        }
+        return -1;
+    }
+
     private static int findInvSlot(ScreenHandler h, Set<String> ids) {
         for (int i = 0; i < h.slots.size(); i++) {
             Slot s = h.slots.get(i);
