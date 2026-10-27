@@ -52,6 +52,9 @@ public final class SpawnerRoutine {
     private static boolean confirmClicked, sellButtonClicked, deliverClicked;
     private static volatile boolean inventoryFull;
     private static int withdrawClicks;
+    private static int round = 1, roundClicks;
+    private static boolean roundHadFull;
+    private static final Map<String, Integer> orderRepeats = new HashMap<>();
     private static List<BlockPos> spawners = new ArrayList<>();
     private static final Map<Integer, Integer> attempts = new HashMap<>();
     private static final ArrayDeque<ItemRule> orderQueue = new ArrayDeque<>();
@@ -96,6 +99,10 @@ public final class SpawnerRoutine {
         }
         spIdx = 0;
         inventoryFull = false;
+        round = 1;
+        roundClicks = 0;
+        roundHadFull = false;
+        orderRepeats.clear();
         orderQueue.clear();
         Helper.msg("Starte Spawner-Lauf (" + reason + "): " + spawners.size() + " Spawner.");
         setState(S.NEXT_SPAWNER);
@@ -277,12 +284,35 @@ public final class SpawnerRoutine {
                 }
                 if (guiOpen(p)) p.closeHandledScreen();
                 cooldown = 10;
+                requeueIfLeft(p, c);
                 nextOrderOrFinish();
             }
             case FINISH -> {
+                // Spawner war bei Inventar-voll noch nicht leer -> naechste Runde
+                if (roundHadFull && roundClicks > 0 && round < c.maxRounds) {
+                    List<BlockPos> list = Helper.findSpawners(p, mc.world, c.spawnerScanRadius, 4.5);
+                    if (!list.isEmpty()) {
+                        round++;
+                        spawners = list;
+                        spIdx = 0;
+                        inventoryFull = false;
+                        roundHadFull = false;
+                        roundClicks = 0;
+                        orderRepeats.clear();
+                        cooldown = 20;
+                        Helper.msg("Spawner noch nicht leer - starte Runde " + round + ".");
+                        setState(S.NEXT_SPAWNER);
+                        return;
+                    }
+                }
+                if (roundHadFull && roundClicks == 0) {
+                    Helper.msg("Keine Fortschritte in dieser Runde (Inventar/Orders voll?) - Lauf beendet.");
+                } else if (roundHadFull && round >= c.maxRounds) {
+                    Helper.msg("Maximale Rundenzahl (" + c.maxRounds + ") erreicht - Lauf beendet.");
+                }
                 c.lastRunEpochMs = System.currentTimeMillis();
                 c.save();
-                Helper.msg("Spawner-Lauf abgeschlossen.");
+                Helper.msg("Spawner-Lauf abgeschlossen (" + round + " Runde(n)).");
                 reset();
             }
             default -> { }
@@ -294,6 +324,7 @@ public final class SpawnerRoutine {
         if (!guiOpen(p)) { spIdx++; setState(S.NEXT_SPAWNER); return; }
         if (inventoryFull || !hasFreeSlot(p)) {
             inventoryFull = true;
+            roundHadFull = true;
             Helper.msg("Inventar voll - entnehme nichts mehr, verarbeite jetzt das Inventar.");
             p.closeHandledScreen();
             spIdx = spawners.size(); // restliche Spawner ueberspringen
@@ -322,6 +353,7 @@ public final class SpawnerRoutine {
             if (attempts.merge(i, 1, Integer::sum) > 3) continue;
             click(mc, p, i, SlotActionType.QUICK_MOVE);
             withdrawClicks++;
+            roundClicks++;
             cooldown = c.clickDelayTicks;
             return;
         }
@@ -415,6 +447,18 @@ public final class SpawnerRoutine {
     }
 
     // ------------------------------------------------------------------ Hilfsfunktion
+    /** Sind nach der Lieferung noch Items uebrig (Order war voll), wird die naechsthoechste Order versucht. */
+    private static void requeueIfLeft(ClientPlayerEntity p, HugoConfig c) {
+        if (c.orderMode != OrderTarget.HIGHEST || currentOrder == null) return;
+        Item it = Registries.ITEM.get(Identifier.of(currentOrder.item));
+        if (Helper.count(p, it) <= 0) return;
+        int n = orderRepeats.merge(currentOrder.item, 1, Integer::sum);
+        if (n <= c.orderMaxRepeats) {
+            orderQueue.addFirst(currentOrder);
+            Helper.msg("Noch Items uebrig - versuche die naechste Order (" + n + "/" + c.orderMaxRepeats + ").");
+        }
+    }
+
     private static boolean hasFreeSlot(ClientPlayerEntity p) {
         PlayerInventory inv = p.getInventory();
         for (int i = 0; i < Math.min(36, inv.size()); i++) if (inv.getStack(i).isEmpty()) return true;
@@ -442,6 +486,10 @@ public final class SpawnerRoutine {
             if (attempts.getOrDefault(i, 0) >= 3) continue;
             return i;
         }
+        return -1;
+    }
+}
+
         return -1;
     }
 }
