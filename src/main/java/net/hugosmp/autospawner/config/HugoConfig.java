@@ -46,6 +46,10 @@ public class HugoConfig {
     public boolean enabled = true;
     public String serverAddress = "hugosmp.net";
     public double intervalHours = 5.5;
+    /** Max. Runden pro Lauf: nach jeder Runde (Inventar voll -> verkaufen/ordern) wird erneut entnommen. */
+    public int maxRounds = 100;
+    /** Wie oft pro Lauf/Item dieselbe Order-Auswahl wiederholt wird, wenn nach der Lieferung noch Items uebrig sind. */
+    public int orderMaxRepeats = 5;
     /** Wird automatisch gepflegt (Zeitpunkt des letzten Laufs). */
     public long lastRunEpochMs = 0;
 
@@ -186,6 +190,8 @@ public class HugoConfig {
         trustedPlayers = cleaned;
 
         intervalHours = clamp(intervalHours, 0.1, 168);
+        maxRounds = (int) clamp(maxRounds, 1, 1000);
+        orderMaxRepeats = (int) clamp(orderMaxRepeats, 0, 50);
         guardRadius = clamp(guardRadius, 5, 128);
         commandCooldownMs = (int) clamp(commandCooldownMs, 500, 10_000);
         clickDelayTicks = (int) clamp(clickDelayTicks, 1, 20);
