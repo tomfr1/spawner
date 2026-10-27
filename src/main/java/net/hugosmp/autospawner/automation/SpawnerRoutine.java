@@ -489,7 +489,3 @@ public final class SpawnerRoutine {
         return -1;
     }
 }
-
-        return -1;
-    }
-}
